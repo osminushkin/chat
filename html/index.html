@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+</head>
+	<body>
+		<div style="display:inline-block;vertical-align:top;margin:2px">
+			<textarea id="messages" style="width:500px;height:300px"></textarea>
+		</div>
+		<div style="display:inline-block;margin:2px">
+			<select id="rooms" multiple="multiple" style="width:200px;height:250px;display:block;margin:0px 0px 4px 0px;box-sizing:content-box;padding:2px"></select>
+			<input type="text" id="roomNameInput" placeholder="Enter new room name" style="width:200px;padding:1px;margin:0px 0px 4px 0px"/>
+			<input type="button" value="Create room" id="createRoom" style="width:200px;padding:1px;box-sizing:content-box;display:block;margin:0px"/>
+		</div>
+		<div style="margin:2px">
+			<input type="text" id="message" placeholder="Enter chat message" style="width:500px;padding:1px;margin:2px"/>
+			<input type="button" value="Send" id="sendBut" style="width:200px;padding:1px;box-sizing:content-box;margin:0px"/>
+		</div>
+		<script src="//cdn.jsdelivr.net/sockjs/0.3.4/sockjs.min.js"></script>
+		<script src="socket.js"></script>
+		<script src="//code.jquery.com/jquery-1.11.0.min.js"></script>
+		<script>
+			$(function() {
+				name = "vasia";
+				var sock = new Socket();
+				$("#sendBut").click(function() {
+					var toSend = {
+						type: "newChatMessage",
+						name: name,
+						date: Date.now(),
+						room: "",
+						message: $("#message").val() + "\n"
+					}
+					console.log("going to send");
+					console.log(toSend);
+					sock.send(JSON.stringify(toSend));
+				})
+			});
+		</script>
+	</body>
+</html>

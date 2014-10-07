@@ -8,7 +8,7 @@
 			<textarea id="messages" style="width:500px;height:300px"></textarea>
 		</div>
 		<div style="display:inline-block;margin:2px">
-			<select id="rooms" multiple="multiple" style="width:200px;height:250px;display:block;margin:0px 0px 4px 0px;box-sizing:content-box;padding:2px"></select>
+			<select id="rooms" size="2" style="width:200px;height:250px;display:block;margin:0px 0px 4px 0px;box-sizing:content-box;padding:2px"></select>
 			<input type="text" id="roomNameInput" placeholder="Enter new room name" style="width:200px;padding:1px;margin:0px 0px 4px 0px"/>
 			<input type="button" value="Create room" id="createRoom" style="width:200px;padding:1px;box-sizing:content-box;display:block;margin:0px"/>
 		</div>
@@ -21,20 +21,54 @@
 		<script src="//code.jquery.com/jquery-1.11.0.min.js"></script>
 		<script>
 			$(function() {
-				name = "vasia";
+				getCookieUserId = function() {
+					var matches = document.cookie.match(new RegExp(
+						"(?:^|; )" + "userId".replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
+					));
+					return matches ? decodeURIComponent(matches[1]) : undefined;
+				}
+
 				var sock = new Socket();
 				$("#sendBut").click(function() {
-					var toSend = {
-						type: "newChatMessage",
-						name: name,
-						date: Date.now(),
-						room: "",
-						message: $("#message").val() + "\n"
+					selectedRoom = $("#rooms option:selected").text();
+					if (!selectedRoom) {
+						alert("Chat room not selected. Please select the room and send message again");
+						return;
 					}
-					console.log("going to send");
-					console.log(toSend);
-					sock.send(JSON.stringify(toSend));
-				})
+					message = $("#message").val();
+					if (message.length < 1) {
+						return
+					}
+					sock.send(JSON.stringify({
+						type:"newChatMessage",
+						userId:getCookieUserId(),
+						date:Date.now(),
+						room:selectedRoom,
+						message:message + "\n"
+					}));
+					$("#message").val("");
+				});
+				$("#createRoom").click(function() {
+					newRoomName = $("#roomNameInput").val();
+					if (!newRoomName || newRoomName.length < 1) {
+						alert("New room name is not valid");
+						return;
+					}
+					sock.send(JSON.stringify({
+						type:"newChatRoom",
+						userId:getCookieUserId(),
+						room:newRoomName,
+					}));
+					$("#roomNameInput").val("");
+				});
+				$("#rooms").change(function() {
+					selectedRoom = $("#rooms option:selected").text();
+					sock.send(JSON.stringify({
+						type:"selectChatRoom",
+						userId:getCookieUserId(),
+						room:selectedRoom,
+					}));
+				});
 			});
 		</script>
 	</body>

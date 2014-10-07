@@ -7,6 +7,10 @@ function Socket()
 
 	sock.onopen = function() {
 		console.log('open');
+		sock.send(JSON.stringify({
+			type: "authentication",
+			userId:getCookieUserId()
+		}));
 	};
 	sock.onmessage = function(e) {
 		console.log(e);
@@ -17,9 +21,10 @@ function Socket()
 
 			case "newChatMessage":
 			{
-				$("#messages").append(
-					"[" + jsonM.date + "]" + jsonM.name + ": " + jsonM.message);
-				$("#messages").animate({ scrollTop: $(document).height() }, "fast");
+				if ($("#rooms option:selected").text() === jsonM.room) {
+					$("#messages").append("[" + jsonM.date + "]" + jsonM.user + ": " + jsonM.message);
+					$("#messages").animate({ scrollTop: $(document).height() }, "fast");
+				}
 				break;
 			}
 			case "updateRooms":
@@ -28,6 +33,20 @@ function Socket()
 					toAppend += "<option>" + room + "</option>"
 				});
 				$("#rooms").html(toAppend);
+				break;
+			case "newChatRoom":
+				$("#rooms").append("<option>" + jsonM.room + "</option>");
+				break;
+			case "loadRoomMessages":
+				var toAppend = "";
+				jsonM.messages.forEach(function(message) {
+					toAppend += "[" + message.date + "]" + message.user + ": " + message.message;
+				});
+				$("#messages").html(toAppend);
+				$("#messages").animate({ scrollTop: $(document).height() }, "fast");
+				break;
+			case "redirect":
+				window.location.pathname = jsonM.url;
 		}
 	};
 

@@ -15,7 +15,7 @@ mongoose.connection.once "open", () ->
 
 UserSchema = new mongoose.Schema {login: String,password: String}
 MessageSchema = new mongoose.Schema {date:Date,user:String,message:String,room:String,createdAt:{type:Date,expires:60*5}}
-RoomSchema = new mongoose.Schema {roomName:String}
+RoomSchema = new mongoose.Schema {room:String}
 UserModel = mongoose.model 'UserModel', UserSchema
 MessageModel = mongoose.model 'MessageModel', MessageSchema
 RoomModel = mongoose.model 'RoomModel', RoomSchema
@@ -43,11 +43,17 @@ app.post "/login", (req, res) ->
 	generateUserIdAndSendItToClient = (user) ->
 		userId = randomstring.generate()
 		console.log "Generated userId for user #{user.login} (#{userId})"
-		users.push {login: user.login, conn: null, selectedRoom: null, isAuthenticated: false}
+		userItem = {login: user.login, userId: userId, conn: null, selectedRoom: null, isAuthenticated: false}
+		users.push userItem
+		setTimeout () ->
+			index = users.indexOf userItem
+			if not users[index].conn? or users[index].conn.readyState is 3
+				console.log "userId time is out (#{userId})"
+				users.splice index, 1
+		, 60*60*1000
 		res.cookie "userId", userId
 		res.redirect 301, "/"
 
-	console.log req.rawBody
 	params = []
 	(req.rawBody.split "&").forEach (pair) ->
 		pairSplited = pair.split "="
@@ -83,42 +89,88 @@ socket = sockjs.createServer()
 socket.on 'connection', (conn) ->
 
 	tm = setTimeout () ->
-		console.log "Authentification not passed in 5 seconds after connection established. Connection will be closed"
+		console.log "Authentication not passed in 5 seconds after connection established. Connection will be closed"
+		conn.write JSON.stringify {	type: "redirect", url: "login.html" }
 		conn.close()
 	, 5000
-
-
-
-	RoomModel.find {}, (err, rooms) ->
-		roomsNameArray = rooms.map (room) ->
-			room.roomName
-
-		conn.write JSON.stringify {	type: "updateRooms", rooms: roomsNameArray }
-
-	users.push {conn: conn, selectedRoom: ""}
 
 	conn.on 'data', (message) ->
 
 		console.log message
 		jsonM = JSON.parse message
+		if not jsonM.userId?
+			console.log "Received message with undefined userId"
+			conn.write JSON.stringify {	type: "redirect", url: "login.html" }
 
-		switch jsonM.type
-			when "newChatMessage"
-				console.log "new chat message in room " + jsonM.room
-				users.forEach (user) ->
-					if user.selectedRoom is jsonM.room
-						user.conn.write message
-		#when "selectRoom"
+		user = getUserByUserId jsonM.userId
 
+		if jsonM.type is "authentication"
+			clearTimeout tm
 
+			if user?
+				users[users.indexOf user].conn = conn
+				users[users.indexOf user].isAuthenticated = true
+
+				RoomModel.find {}, (err, rooms) ->
+					roomsNameArray = rooms.map (room) ->
+						room.room
+
+					conn.write JSON.stringify {	type: "updateRooms", rooms: roomsNameArray }
+			else
+				console.error "Authentication message received from not authorized user"
+				conn.write JSON.stringify {	type: "redirect", url: "login.html" }
+
+			return
+
+		if user.isAuthenticated
+			switch jsonM.type
+				when "newChatMessage"
+					console.log "new chat message in room #{jsonM.room}"
+					users.forEach (tmpUser) ->
+						if tmpUser.isAuthenticated and (tmpUser.selectedRoom is jsonM.room) and (tmpUser.conn.readyState is 1)
+							tmpUser.conn.write JSON.stringify {
+								type: "newChatMessage",
+								user: user.login,
+								message: jsonM.message,
+								date: jsonM.date,
+								room: jsonM.room
+							}
+					
+					newMessage = {user: user.login, message: jsonM.message, date: jsonM.date, room: jsonM.room, createdAt: Date.now()}
+					newMessageModel = new MessageModel newMessage
+					newMessageModel.save (err, message) ->
+						if err?
+							console.error "Failed to store new message"
+				when "newChatRoom"
+					console.log "new chat room #{jsonM.room}"
+					newRoom = new RoomModel {room: jsonM.room}
+					newRoom.save (err, room) ->
+						if err?
+							console.error "Failed to store new room in DB"
+
+					users.forEach (tmpUser) ->
+						if tmpUser.isAuthenticated and tmpUser.conn.readyState is 1
+							tmpUser.conn.write JSON.stringify {type: "newChatRoom", room: jsonM.room}
+				when "selectChatRoom"
+					users[users.indexOf user].selectedRoom = jsonM.room
+					MessageModel.find {room: jsonM.room}, 'date user message', (err, messages) ->
+						if err?
+							console.error "Failed to get messages from DB for #{jsonM.room} room"
+						user.conn.write JSON.stringify {type: "loadRoomMessages", room: jsonM.room, messages: messages}
 
 	conn.on 'close', () ->
 		console.log "Closed"
 
 
 server = http.createServer app
-
 socket.installHandlers server, {prefix:'/socket'}
-
 server.listen 3600
 console.log "[fmmodule] listening port " + 3600
+
+getUserByUserId = (userId) ->
+	user = undefined
+	for tmpUser in users
+		if tmpUser.userId is userId
+			user = tmpUser
+			break
+	return user
